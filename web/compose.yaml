@@ -1,0 +1,37 @@
+# The web layer on one machine, for development only; staging and production
+# run on Kubernetes. From the repository root:
+#
+#   docker compose -f web/compose.yaml up --build
+#
+# then open http://localhost:8000 (password: dev, any user name). Start it with
+# UI_ACCESS_PASSWORD= (set but empty) to turn the password off.
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: web/Dockerfile
+  image: qalun-web:dev
+  environment:
+    REDIS_URL: redis://valkey:6379/0
+    UI_ACCESS_PASSWORD: ${UI_ACCESS_PASSWORD-dev}
+    MAX_UPLOAD_MB: "100"
+    RESULT_TTL_HOURS: "24"
+  depends_on:
+    - valkey
+
+services:
+  # Valkey: the BSD-licensed continuation of Redis, spoken to with the same client.
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+
+  worker:
+    <<: *app
+    command: ["qalun-web-worker"]
+    ports:
+      - "9100:9100"

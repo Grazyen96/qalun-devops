@@ -1,0 +1,15 @@
+# BuildKit reads this file for web/Dockerfile instead of a .dockerignore at the
+# root, so the build context rules live with the web layer and QuranText's own
+# files stay untouched. Only what the image installs is sent.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!web/
+
+**/__pycache__
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+web/tests
