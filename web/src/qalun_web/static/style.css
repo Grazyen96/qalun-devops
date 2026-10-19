@@ -1,0 +1,88 @@
+:root {
+  --bg: #f7f5f0;
+  --surface: #ffffff;
+  --text: #1f2421;
+  --muted: #5d655f;
+  --accent: #1f6f5c;
+  --accent-text: #ffffff;
+  --border: #d8d4ca;
+  --error: #a3322b;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161a18;
+    --surface: #1f2522;
+    --text: #e8ebe8;
+    --muted: #a3aca6;
+    --accent: #5fbf9f;
+    --accent-text: #0d1311;
+    --border: #36403b;
+    --error: #ff8a80;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans Arabic", sans-serif;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+h1 { font-size: 1.75rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.25rem; margin: 0 0 .75rem; }
+header p, small { color: var(--muted); }
+
+form, #job {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.field { display: block; border: 0; padding: 0; margin: 0 0 1.25rem; }
+.field > span, legend { display: block; font-weight: 600; margin-bottom: .4rem; }
+fieldset label { display: block; margin: .25rem 0; }
+
+input[type="file"], select { width: 100%; font: inherit; color: inherit; }
+select {
+  padding: .5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: .6rem 1.2rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+button:disabled { opacity: .6; cursor: progress; }
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+progress { width: 100%; height: .75rem; accent-color: var(--accent); }
+
+.error { color: var(--error); font-weight: 600; }
+
+#job-files { padding: 0; list-style: none; }
+#job-files li { margin: .4rem 0; }
+#job-files a { color: var(--accent); font-weight: 600; }

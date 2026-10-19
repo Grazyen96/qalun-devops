@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Qalun subtitles</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Qalun subtitles</h1>
+      <p>Upload a Quran recitation or a lecture and get its subtitles back as SRT and WebVTT files.</p>
+    </header>
+
+    <form id="upload" novalidate>
+      <label class="field">
+        <span>Recording</span>
+        <input type="file" name="file" accept="audio/*,video/mp4,video/webm,video/quicktime" required>
+      </label>
+
+      <fieldset class="field">
+        <legend>What is it?</legend>
+        <label><input type="radio" name="mode" value="recitation" checked> A recitation</label>
+        <label><input type="radio" name="mode" value="lecture"> A lecture that quotes ayat</label>
+      </fieldset>
+
+      <label class="field" id="surah-field">
+        <span>Surah <small>(optional; naming it makes a recitation faster to time)</small></span>
+        <select name="surah">
+          <option value="">Find it from the recording</option>
+        </select>
+      </label>
+
+      <button type="submit">Make subtitles</button>
+      <p class="error" id="form-error" role="alert" hidden></p>
+    </form>
+
+    <section id="job" aria-live="polite" hidden>
+      <h2 id="job-title"></h2>
+      <progress id="job-progress" max="1"></progress>
+      <p id="job-message"></p>
+      <ul id="job-files"></ul>
+      <button type="button" id="again" hidden>Upload another recording</button>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
