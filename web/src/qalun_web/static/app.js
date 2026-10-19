@@ -13,6 +13,8 @@ const jobFiles = document.getElementById("job-files");
 const again = document.getElementById("again");
 
 const POLL_MS = 2000;
+// The job being shown; an older polling loop stops once another job takes its place.
+let followed = null;
 const STAGES = {
   download: "Fetching the speech model",
   unpack: "Preparing the speech model",
@@ -79,6 +81,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 again.addEventListener("click", () => {
+  followed = null;
   history.replaceState(null, "", location.pathname);
   form.reset();
   showModeChoices();
@@ -117,20 +120,31 @@ function render(job) {
 }
 
 async function follow(id) {
+  followed = id;
+  poll(id);
+}
+
+async function poll(id) {
+  if (followed !== id) return;
   const response = await fetch(`/api/jobs/${encodeURIComponent(id)}`);
   if (response.status === 404) {
     render({ filename: "Job not found", status: "failed", error: await errorText(response), files: [] });
     return;
   }
-  if (response.ok) {
+  if (response.ok && followed === id) {
     const job = await response.json();
     render(job);
     if (job.status === "done" || job.status === "failed") return;
   }
-  setTimeout(() => follow(id), POLL_MS);
+  setTimeout(() => poll(id), POLL_MS);
+}
+
+function followFromAddress() {
+  const id = new URLSearchParams(location.hash.slice(1)).get("job");
+  if (id && id !== followed) follow(id);
 }
 
 loadSurahs();
 showModeChoices();
-const resumed = new URLSearchParams(location.hash.slice(1)).get("job");
-if (resumed) follow(resumed);
+window.addEventListener("hashchange", followFromAddress);
+followFromAddress();
