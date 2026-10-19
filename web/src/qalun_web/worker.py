@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 from qurantext.utils.progress import ProgressEvent
 from redis import Redis
 
+from qalun_web import metrics as m
 from qalun_web.settings import Settings
 from qalun_web.store import JobStore
 
@@ -37,6 +39,7 @@ def process_job(job_id: str, *, store: JobStore, runner: Runner) -> None:
         return
 
     store.mark_running(job_id)
+    started = time.monotonic()
 
     def progress(event: ProgressEvent) -> None:
         store.set_progress(job_id, stage=event.stage, fraction=event.fraction)
@@ -54,8 +57,15 @@ def process_job(job_id: str, *, store: JobStore, runner: Runner) -> None:
             # The details go to the log; the person gets a sentence without server paths.
             log.exception("Job %s failed.", job_id)
             store.mark_failed(job_id, FAILED_MESSAGE)
+            _count(job.mode, "failed", started)
             return
     store.mark_done(job_id, files)
+    _count(job.mode, "done", started)
+
+
+def _count(mode: str, result: str, started: float) -> None:
+    m.JOBS_FINISHED.labels(mode=mode, result=result).inc()
+    m.JOB_DURATION.labels(mode=mode).observe(time.monotonic() - started)
 
 
 def run_job(job_id: str) -> None:
@@ -68,9 +78,12 @@ def run_job(job_id: str) -> None:
 
 
 def main() -> None:
+    from prometheus_client import start_http_server
     from rq import Queue, SimpleWorker
 
     logging.basicConfig(level=logging.INFO)
     settings = Settings.from_env()
+    # SimpleWorker runs each job in this process, so its counters are the ones served here.
+    start_http_server(settings.worker_metrics_port)
     redis = Redis.from_url(settings.redis_url)
     SimpleWorker([Queue(QUEUE_NAME, connection=redis)], connection=redis).work()

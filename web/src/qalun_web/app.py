@@ -20,6 +20,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis import Redis
 from redis.exceptions import RedisError
 
+from qalun_web import metrics as m
 from qalun_web.settings import Settings
 from qalun_web.store import Job, JobStore
 
@@ -39,7 +40,13 @@ _DOWNLOADS = {
 }
 
 
-def create_app(settings: Settings, *, redis: Redis, enqueue: Callable[[str], None]) -> FastAPI:
+def create_app(
+    settings: Settings,
+    *,
+    redis: Redis,
+    enqueue: Callable[[str], None],
+    queue_length: Callable[[], int] | None = None,
+) -> FastAPI:
     app = FastAPI(title="Qalun web", docs_url=None, redoc_url=None, openapi_url=None)
     store = JobStore(redis, ttl_seconds=settings.result_ttl_seconds)
 
@@ -61,12 +68,18 @@ def create_app(settings: Settings, *, redis: Redis, enqueue: Callable[[str], Non
 
     @app.get("/metrics")
     def metrics() -> Response:
+        if queue_length is not None:
+            try:
+                m.JOBS_WAITING.set(queue_length())
+            except RedisError:
+                pass  # The scrape still succeeds; the gauge keeps its last value.
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     # --- behind the password, when one is set: what a person uses ----------------------
 
     @app.get("/")
     def page() -> FileResponse:
+        m.PAGE_VIEWS.inc()
         return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/api/surahs")
@@ -79,18 +92,30 @@ def create_app(settings: Settings, *, redis: Redis, enqueue: Callable[[str], Non
     async def create_job(
         file: UploadFile, mode: str = Form(...), surah: int | None = Form(None)
     ) -> dict:
+        counted_mode = mode if mode in MODES else "other"
+
+        def refuse(status: int, reason: str, message: str) -> HTTPException:
+            m.UPLOADS.labels(mode=counted_mode, result=reason).inc()
+            return HTTPException(status, message)
+
         if mode not in MODES:
-            raise HTTPException(400, f"Mode must be one of: {', '.join(MODES)}.")
+            raise refuse(400, "bad_mode", f"Mode must be one of: {', '.join(MODES)}.")
         if surah is not None and not 1 <= surah <= 114:
-            raise HTTPException(400, "Surah must be a number from 1 to 114.")
+            raise refuse(400, "bad_surah", "Surah must be a number from 1 to 114.")
         filename = PurePath(file.filename or "").name
         if PurePath(filename).suffix.lower() not in RECORDING_SUFFIXES:
-            raise HTTPException(415, "Upload an audio recording (MP3, WAV, M4A, OGG, FLAC, MP4…).")
+            raise refuse(
+                415, "wrong_type", "Upload an audio recording (MP3, WAV, M4A, OGG, FLAC, MP4…)."
+            )
         audio = await _read_capped(file, settings.max_upload_bytes)
+        if audio is None:
+            limit_mb = settings.max_upload_bytes // (1024 * 1024)
+            raise refuse(413, "too_large", f"The recording is larger than {limit_mb} MB.")
         if not audio:
-            raise HTTPException(400, "The file is empty.")
+            raise refuse(400, "empty", "The file is empty.")
         job_id = store.create(audio=audio, filename=filename, mode=mode, surah=surah)
         enqueue(job_id)
+        m.UPLOADS.labels(mode=mode, result="accepted").inc()
         return {"id": job_id, "status_url": f"/api/jobs/{job_id}"}
 
     @app.get("/api/jobs/{job_id}")
@@ -103,6 +128,7 @@ def create_app(settings: Settings, *, redis: Redis, enqueue: Callable[[str], Non
         content = store.file(job_id, name) if name in job.files and name in _DOWNLOADS else None
         if content is None:
             raise HTTPException(404, "This job has no such file.")
+        m.DOWNLOADS.labels(file=name).inc()
         suffix, media_type = _DOWNLOADS[name]
         download_name = f"{PurePath(job.filename).stem}.{suffix}"
         return Response(
@@ -136,7 +162,7 @@ def create_app_from_env() -> FastAPI:
             failure_ttl=settings.result_ttl_seconds,
         )
 
-    return create_app(settings, redis=redis, enqueue=enqueue)
+    return create_app(settings, redis=redis, enqueue=enqueue, queue_length=lambda: queue.count)
 
 
 # --- helpers ---------------------------------------------------------------------------
@@ -163,13 +189,14 @@ def _describe(job: Job) -> dict:
     }
 
 
-async def _read_capped(file: UploadFile, limit: int) -> bytes:
+async def _read_capped(file: UploadFile, limit: int) -> bytes | None:
+    """The upload's bytes, or None as soon as it passes *limit*."""
     chunks: list[bytes] = []
     size = 0
     while chunk := await file.read(_CHUNK):
         size += len(chunk)
         if size > limit:
-            raise HTTPException(413, f"The recording is larger than {limit // (1024 * 1024)} MB.")
+            return None
         chunks.append(chunk)
     return b"".join(chunks)
 
